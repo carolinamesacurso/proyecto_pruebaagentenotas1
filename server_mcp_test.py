@@ -21,7 +21,6 @@ os.makedirs(DESCARGAS_DIR, exist_ok=True)
 
 mcp = FastMCP("Gestor de Notas", host=HOST, port=PORT)
 
-
 def validar_nombre_nota(nombre_nota: str) -> str:
     """Comprueba que el nombre sea un nombre de archivo y no una ruta."""
     if not nombre_nota or os.path.basename(nombre_nota) != nombre_nota:
@@ -32,127 +31,185 @@ def validar_nombre_nota(nombre_nota: str) -> str:
 
     return nombre_nota
 
-
-# --------------------------------------------------
-# HERRAMIENTAS MCP GENERALES
-# --------------------------------------------------
-
 @mcp.tool()
-def listar_notas_tematicas(nombre_tema: str) -> list[str] | str:
-    """Lista las notas que hay dentro de una temática."""
-    if nombre_tema not in TEMATICAS:
-        return f"Error: La temática '{nombre_tema}' no está permitida."
+def listar_notas_tematicas(nombre_tema: str) -> str:
+    """
+    Lista todos los nombres de los archivos de notas que se encuentran dentro de la carpeta nombrada igual que la temática dada por el usuario 
+    La carpeta de cada temática se encuentra dentro de la carpeta misNotas y debe coincidir con el nombre de la temática.
+    
+    Parámetros:
+    - nombre_tema: nombre de la temática de las notas a listar (debe coincidir con el nombre de la carpeta que contiene las notas de esa temática)
 
-    carpeta = os.path.join(NOTES_DIR, nombre_tema)
+    IMPORTANTE:
+    - Antes de llamar a esta herramienta, asegúrate de que la temática ha sido proporcionada por el usuario.
+    - No inventes nombres de archivos ni afirmes que el listado de notas se ha obtenido si la herramienta no ha realizado la operación correctamente.
+    """
+    base = os.path.realpath(NOTES_DIR)
 
-    if not os.path.isdir(carpeta):
-        return f"No existe todavía la carpeta de la temática {nombre_tema}."
+    # if nombre_tema not in TEMÁTICAS:
+    #         return "Error: La temática no es válida. "
 
-    return [
-        nombre
-        for nombre in os.listdir(carpeta)
-        if os.path.isfile(os.path.join(carpeta, nombre))
-    ]
+    dirpath = os.path.realpath(os.path.join(base, nombre_tema))
 
-
-@mcp.tool()
-def crear_nota(nombre_nota: str, contenido_nota: str) -> str:
-    """Crea una nota de texto en la carpeta de recepción."""
+    if os.path.commonpath([base, dirpath]) != base:
+            return "Error: Acceso denegado fuera del directorio de notas."
+    
+    if not os.path.isdir(dirpath):
+            return f"Error: La carpeta de la temática no existe. Temáticas existentes {TEMATICAS}"
+    
     try:
-        nombre_nota = validar_nombre_nota(nombre_nota)
-        destino = os.path.join(RECEPCION_DIR, nombre_nota)
+        files = sorted(os.listdir(dirpath))
+        return "\n".join(files) if files else "No hay notas aún en esa temática."
+    except Exception as e:
+        return f"Error al listar notas: {str(e)}"
+    
+@mcp.tool()
+def crear_nota(nombre_nota: str,contenido_nota: str) -> str:
+    """Crea una nota como un archivo .txt para guardarlo en la carpeta de recepción .
+    Parámetros 
+    - nombre_nota: nombre de la nota a crear (sin extensión .txt)
+    - contenido_nota: contenido de la nota a crear
 
-        if os.path.exists(destino):
-            return "Error: Ya existe una nota con ese nombre en Recepción."
+    Interpretación del resultado:
+    Si devuelve "Nota Creada exitosamente en la carpeta Recepción.", significa que el archivo se ha creado correctamente.
+    Si devuelve un mensaje que comienza por "Error:", significa que la operación no se ha completado correctamente.
 
-        with open(destino, "w", encoding="utf-8") as archivo:
-            archivo.write(contenido_nota)
+    IMPORTANTE:
+    - Antes de llamar a esta herramienta, asegúrate de que el nombre y contenido de la nota han sido proporcionados por el usuario.
+    - No afirmes que la nota se ha creado si la herramienta no ha realizado la operación correctamente.
+    
+    """
+    base = os.path.realpath(RECEPCION_DIR)
+
+#   # Añadir .txt solamente si no está presente
+#         if not nombre_nota.endswith(".txt"):
+#             nombre_nota += ".txt"
+
+
+    if not os.path.isdir(base):
+            return "Error: La carpeta no existe."
+    
+    try:
+        ruta_completa = os.path.join(base, f"{nombre_nota}.txt")
+        
+        if os.path.commonpath([base, ruta_completa]) != base:
+                return "Error: Acceso denegado a archivos fuera del directorio de notas."
+
+        # Comprobar si el archivo ya existe
+        if os.path.exists(ruta_completa):
+            return "Error: Ya existe una nota con ese nombre."
+        
+        with open(ruta_completa, "w", encoding="utf-8") as f:
+            f.write(contenido_nota)
 
         return "Nota Creada exitosamente en la carpeta Recepción."
-
     except Exception as e:
-        return f"Error al crear la nota: {e}"
-
+        return f"Error al crear la nota: {str(e)}"
 
 @mcp.tool()
 def Copiar_nota(nombre_nota: str) -> str:
-    """Copia una nota concreta desde Descargas a Recepción."""
+    """Copia un archivo indicado por el usuario de la carpeta local de descargas a la carpeta local de recepcion.
+    
+    Parámetros:
+    - nombre_nota: nombre del archivo a copiar
+
+    Interpretación del resultado:
+    Si devuelve "Archivo copiado a la carpeta de recepción.", significa que el archivo se ha copiado correctamente.
+    Si devuelve un mensaje que comienza por "Error:", significa que la operación no se ha completado correctamente
+    
+    IMPORTANTE:
+    - Antes de llamar a esta herramienta, asegúrate de que el nombre del archivo ha sido proporcionado por el usuario.
+    - No afirmes que la nota se ha copiado si la herramienta no ha realizado la operación correctamente.
+    - Interpreta el resultado de la herramienta antes de responder.
+    - Si el resultado contiene el texto "Archivo copiado a la carpeta de recepción", considera que la copia ha sido correcta.
+
+    """
+    base = os.path.realpath(DESCARGAS_DIR)
+    destino = os.path.realpath(RECEPCION_DIR)
+
+
+    if not nombre_nota.endswith(".txt"):
+        nombre_nota += ".txt"
+
+    archivo_origen = os.path.realpath(os.path.join(base, nombre_nota))
+
+    # Comprobar que el archivo está dentro de la carpeta de notas
+    if os.path.commonpath([base, archivo_origen]) != base:
+        return "Error: Acceso denegado a archivos fuera del directorio de notas."
+
+    if not os.path.isfile(archivo_origen):
+        return f"Error: La nota no existe.{archivo_origen}"
+    
     try:
-        nombre_nota = validar_nombre_nota(nombre_nota)
-        origen = os.path.join(DESCARGAS_DIR, nombre_nota)
-        destino = os.path.join(RECEPCION_DIR, nombre_nota)
+        ruta_completa_destino = os.path.join(destino, f"{nombre_nota}")
 
-        if not os.path.isfile(origen):
-            return "Error: La nota no existe en la carpeta de descargas."
+        with open(archivo_origen, "r", encoding="utf-8") as f:
+            contenido = f.read()
+        
+        with open(ruta_completa_destino, "w", encoding="utf-8") as f:
+            f.write(contenido)
 
-        if os.path.exists(destino):
-            return "Error: Ya existe una nota con ese nombre en Recepción."
-
-        shutil.copy2(origen, destino)
-        return "Archivo copiado a la carpeta de recepción."
-
+        return "Archivo copiado a la carpeta de recepción"
     except Exception as e:
-        return f"Error al copiar el archivo: {e}"
+        return f"Error copiando el archivo: {str(e)}"
 
-
-@mcp.tool()
-def mover_todos_a_recepcion() -> dict:
-    """
-    Mueve todos los archivos que hay directamente en Descargas a Recepción.
-    No mueve carpetas ni sobrescribe archivos existentes.
-    """
-    movidos = []
-    no_movidos = {}
-
-    for nombre in os.listdir(DESCARGAS_DIR):
-        origen = os.path.join(DESCARGAS_DIR, nombre)
-
-        if not os.path.isfile(origen):
-            continue
-
-        destino = os.path.join(RECEPCION_DIR, nombre)
-
-        if os.path.exists(destino):
-            no_movidos[nombre] = "Ya existe un archivo con ese nombre en Recepción."
-            continue
-
-        try:
-            shutil.move(origen, destino)
-            movidos.append(nombre)
-        except Exception as e:
-            no_movidos[nombre] = str(e)
-
-    return {
-        "archivos_movidos": movidos,
-        "archivos_no_movidos": no_movidos
-    }
-
+    
+   
 
 @mcp.tool()
 def leer_nota(nombre_nota: str) -> str:
-    """Lee el contenido de una nota de Recepción."""
+    """."""
+    """
+    Lee el contenido de una nota específica en la carpeta de recepción
+    La nota se encuentra dentro de la carpeta recepcion dentro de misnotas y debe coincidir con el nombre del archivo.
+    
+    Parámetros:
+    - nombre_nota: nombre de la nota 
+
+    IMPORTANTE:
+    - Antes de llamar a esta herramienta, asegúrate de que el nombre ha sido proporcionada por el usuario.
+    - No inventes nombres de notas ni afirmes que la nota se ha leído si la herramienta no ha realizado la operación correctamente.
+    """
+    base = os.path.realpath(RECEPCION_DIR)
+
+    if not nombre_nota.endswith(".txt"):
+            nombre_nota += ".txt"
+
+    filepath = os.path.realpath(os.path.join(base, nombre_nota))
+
+    # Comprobar que el archivo está dentro de la carpeta de notas
+    if os.path.commonpath([base, filepath]) != base:
+        return "Error: Acceso denegado a archivos fuera del directorio de notas."
+
+    if not os.path.isfile(filepath):
+        return "Error: La nota no existe."
+
     try:
-        nombre_nota = validar_nombre_nota(nombre_nota)
-        ruta = os.path.join(RECEPCION_DIR, nombre_nota)
-
-        if not os.path.isfile(ruta):
-            return "Error: La nota no existe en la carpeta de recepción."
-
-        with open(ruta, "r", encoding="utf-8") as archivo:
-            return archivo.read()
-
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
     except Exception as e:
-        return f"Error al leer la nota: {e}"
-
+        return f"Error leyendo el archivo: {str(e)}"
 
 @mcp.tool()
-def listar_notas_recepcion() -> list[str]:
-    """Lista todos los archivos que hay en Recepción."""
-    return [
-        nombre
-        for nombre in os.listdir(RECEPCION_DIR)
-        if os.path.isfile(os.path.join(RECEPCION_DIR, nombre))
-    ]
+def listar_notas_recepcion() -> str:
+    """
+    Lista todos los nombres de los archivos de notas que se encuentran SOLO dentro de la carpeta recepcion    
+
+    IMPORTANTE:
+    - Solo lista los nombres de los archivos en esa carpeta
+    - No inventes nombres de archivos ni afirmes que el listado de notas se ha obtenido si la herramienta no ha realizado la operación correctamente.
+    """
+    base = os.path.realpath(RECEPCION_DIR)
+    
+    if not os.path.isdir(base):
+            return f"Error: La carpeta recepción no existe."
+    
+    try:
+        files = sorted(os.listdir(base))
+        return "\n".join(files) if files else "No hay notas aún en esa carpeta."
+    except Exception as e:
+        return f"Error al listar notas: {str(e)}"
+
 
 
 # --------------------------------------------------

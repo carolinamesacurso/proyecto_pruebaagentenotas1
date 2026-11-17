@@ -10,11 +10,6 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-
-# --------------------------------------------------
-# CONFIGURACIÓN
-# --------------------------------------------------
-
 MCP_URL = "http://127.0.0.1:8000/mcp"
 TEMATICAS = ["cocina", "lectura", "deportes"]
 
@@ -23,9 +18,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 def obtener_llm(proveedor: str, modelo: str):
-    """Crea el modelo indicado: Ollama o Gemini."""
 
     if proveedor.lower() == "ollama":
+
         return ChatOllama(
             model=modelo,
             temperature=0,
@@ -34,10 +29,8 @@ def obtener_llm(proveedor: str, modelo: str):
 
     elif proveedor.lower() == "gemini":
         if not GEMINI_API_KEY:
-            raise ValueError(
-                "No se ha encontrado GEMINI_API_KEY en el archivo .env"
-            )
-
+            raise ValueError("No se ha encontrado GEMINI_API_KEY en el archivo .env")
+    
         return ChatGoogleGenerativeAI(
             model=modelo,
             temperature=0,
@@ -47,30 +40,36 @@ def obtener_llm(proveedor: str, modelo: str):
     else:
         raise ValueError(f"Proveedor no soportado: {proveedor}")
 
-
+    
 async def ainput(prompt: str) -> str:
-    """Permite escribir sin bloquear el bucle de asyncio."""
+    # Permite que el loop de asyncio siga corriendo mientras el usuario escribe
     return await asyncio.to_thread(input, prompt)
 
 
-# --------------------------------------------------
-# AGENTE LANGGRAPH
-# --------------------------------------------------
 
 async def main():
 
-    # Seleccionar el proveedor y el modelo.
-    llm = obtener_llm(
-        proveedor="gemini",
-        modelo="gemini-3.5-flash-lite"
-    )
+    # Configurar el LLM
+    # llm = ChatOllama(
+    #     # model='llama3.1:8b-instruct-q4_K_M',
+    #     model='llama3.1:8b',
+    #     temperature=0,
+    #     base_url="http://localhost:11434"
+    #     # base_url="http://10.42.68.45:11434"
+    #     # base_url="http://127.0.0.1:11434",
+    # )
 
-    # Para utilizar Ollama, sustituye la configuración anterior:
-    #
+    #para ollama
     # llm = obtener_llm(
     #     proveedor="ollama",
     #     modelo="llama3.1:8b"
     # )
+
+    #para gemini
+    llm = obtener_llm(
+    proveedor="gemini",
+    modelo="gemini-3.5-flash-lite"
+    )
 
     # Conexión con el servidor MCP por HTTP.
     async with streamable_http_client(MCP_URL) as (read, write, _):
@@ -80,121 +79,129 @@ async def main():
             # Cargar TODAS las herramientas directamente desde MCP.
             mcp_tools = await load_mcp_tools(session)
 
-            nombres_tools = {herramienta.name for herramienta in mcp_tools}
+            # nombres_tools = {herramienta.name for herramienta in mcp_tools}
 
-            print("Tools MCP disponibles:", ", ".join(sorted(nombres_tools)))
+            # print("Tools MCP disponibles:", ", ".join(sorted(nombres_tools)))
 
-            # Comprobar que el servidor ofrece las herramientas necesarias.
-            necesarias = {
-                "obtener_notas_recepcion",
-                "mover_archivos"
-            }
+            # # Comprobar que el servidor ofrece las herramientas necesarias.
+            # necesarias = {
+            #     "obtener_notas_recepcion",
+            #     "mover_archivos"
+            # }
 
-            faltan = necesarias - nombres_tools
+            # faltan = necesarias - nombres_tools
 
-            if faltan:
-                raise RuntimeError(
-                    "Faltan herramientas en el servidor MCP: "
-                    + ", ".join(sorted(faltan))
-                )
+            # if faltan:
+            #     raise RuntimeError(
+            #         "Faltan herramientas en el servidor MCP: "
+            #         + ", ".join(sorted(faltan))
+            #     )
 
             memory = MemorySaver()
 
             system_prompt = f"""
-Eres un asistente gestor de notas. Responde siempre en español.
+   Eres un asistente que usa herramientas MCP para ayudar al usuario. Responde en español.
 
-Las temáticas permitidas son: {TEMATICAS}.
+            Tus funciones principales van a ser crear una nota , copiar una nota de la carpeta de descargas a la carpeta de recepción y leer el contenido de una nota específica.  
+            Estos serán los pasos a seguir para cada función:
 
-INSTRUCCIONES GENERALES
+            Cuando el usuario quiera crear una nota:
+            - Pregunta al usuario el nombre de la nota si no lo ha proporcionado.
+            - Pregunta al usuario el contenido de la nota si no lo ha proporcionado.
+            - Utiliza a la herramienta crear_nota SOLO cuando tengas el nombre y contenido de la nota.
+            - Cuando tengas el nombre y contenido de la nota, llama a la herramienta crear_nota con los parámetros nombre_nota y contenido_nota que has obtenido anteriormente.
+            - No afirmes que la nota se ha creado si la herramienta no ha realizado la operación correctamente.
+            - Interpreta el resultado de la herramienta antes de responder.
+            - Si el resultado contiene el texto "Nota Creada exitosamente en la carpeta Recepción.", considera que la creación ha sido correcta.
+            
+            Cuando el usuario quiera listar las notas por temática:
+            - Pregunta al usuario la temática de las notas si no lo ha proporcionado.
+            - Si no lo ha indicado , pregúntale qué temática quiere listar
+            - No inventes ni supongas una temática
+            - Cuando tengas la temática de las notas, llama a la herramienta listar_notas_tematicas con el parámetro temática que has obtenido anteriormente.
+            - Utiliza el resultado devuelto por la herramienta para comunicar al ususario la lista de notas encontradas en esa temática.
+            - Si la herramienta devuelve un error , comunícaselo al usuario.
 
-Cuando el usuario quiera crear una nota:
-- Pregunta por el nombre si no lo ha proporcionado.
-- Pregunta por el contenido si no lo ha proporcionado.
-- Cuando tengas ambos datos, utiliza la herramienta MCP crear_nota.
-- Comunica el resultado real de la herramienta.
+            Cuando el usuario quiera almacenar o subir una nota desde la carpeta de descargas a la carpeta de recepción:
+            - Pregunta al usuario el nombre de la nota si no lo ha proporcionado.
+            - No inventes ni supongas un nombre de nota
+            - Cuando tengas el nombre de la nota, llama a la herramienta Copiar_nota con el parámetro nombre_nota que has obtenido anteriormente.
+            - No afirmes que la nota se ha copiado si la herramienta no ha realizado la operación correctamente.
+            - Interpreta el resultado de la herramienta antes de responder.
+            - Si el resultado contiene el texto "Archivo copiado a la carpeta de recepción", considera que la copia ha sido correcta.
+            - Si la herramienta devuelve un error , comunícaselo al usuario.
 
-Cuando el usuario quiera listar notas por temática:
-- Pregunta qué temática quiere consultar si no la ha indicado.
-- Utiliza la herramienta MCP listar_notas_tematicas.
-- Comunica el resultado.
+            Cuando el usuario quiera leer una nota:
+             - Pregunta al usuario el nombre de la nota si no lo ha proporcionado.
+             - No inventes ni supongas un nombre de nota
+             - Cuando tengas el nombre de la nota, llama a la herramienta leer_nota con el parámetro nombre_nota que has obtenido anteriormente.
+             - Utiliza el resultado devuelto por la herramienta para comunicar al usuario el contenido de la nota.
+             - Si la herramienta devuelve un error , comunícaselo al usuario.
+            
+            Cuando el usuario quiera listar todas las notas de la carpeta de recepción:
+            - Llama a la herramienta listar_notas_recepcion.
+            - Utiliza el resultado devuelto por la herramienta para comunicar al ususario la lista de notas encontradas en esa carpeta.
+            - Si la herramienta devuelve un error , comunícaselo al usuario.
 
-Cuando el usuario quiera copiar una nota concreta de Descargas a Recepción:
-- Pregunta por el nombre si no lo ha indicado.
-- Utiliza la herramienta MCP Copiar_nota.
-- Comunica el resultado real.
 
-Cuando el usuario quiera leer una nota:
-- Pregunta por el nombre si no lo ha indicado.
-- Utiliza la herramienta MCP leer_nota.
-- Comunica el contenido devuelto.
+            CLASIFICAR Y MOVER TODAS LAS NOTAS DE RECEPCIÓN
 
-Cuando el usuario quiera listar todas las notas de Recepción:
-- Utiliza la herramienta MCP listar_notas_recepcion.
-- Comunica los nombres devueltos.
+            Cuando el usuario solicite clasificar u organizar todas las notas de Recepción,
+            sigue obligatoriamente este procedimiento:
 
-Cuando el usuario quiera pasar TODOS los archivos de Descargas a Recepción:
-- Utiliza la herramienta MCP mover_todos_a_recepcion.
-- Comunica qué archivos se movieron y cuáles no.
+            1. Llama UNA SOLA VEZ a la herramienta MCP obtener_notas_recepcion.
+            Esta herramienta devuelve un diccionario cuyas claves son los nombres
+            de los archivos y cuyos valores son sus contenidos.
 
-CLASIFICAR Y MOVER TODAS LAS NOTAS DE RECEPCIÓN
+            2. No pidas al usuario los nombres de los archivos. Debes procesar todos
+            los archivos .txt que devuelve la herramienta.
 
-Cuando el usuario solicite clasificar u organizar todas las notas de Recepción,
-sigue obligatoriamente este procedimiento:
+            3. Si el resultado contiene la clave "error", comunica el error.
+            Si el diccionario está vacío, informa de que Recepción no contiene notas.
 
-1. Llama UNA SOLA VEZ a la herramienta MCP obtener_notas_recepcion.
-   Esta herramienta devuelve un diccionario cuyas claves son los nombres
-   de los archivos y cuyos valores son sus contenidos.
+            4. Lee y analiza el contenido de cada nota. Decide una única temática
+            para cada archivo, utilizando exclusivamente estas opciones:
+            cocina, lectura o deportes.
+            Clasifica por el contenido, nunca solamente por el nombre del archivo. 
+        
+            5. Mantén las correspondencias exactas entre cada nombre de archivo
+            y la temática que has decidido. Prepara un único diccionario con
+            esta estructura:
+            {{
+                "nota1.txt": "cocina",
+                "nota2.txt": "deportes",
+                "nota3.txt": "lectura"
+            }}
 
-2. No pidas al usuario los nombres de los archivos. Debes procesar todos
-   los archivos .txt que devuelve la herramienta.
+            6. Si una nota no encaja razonablemente en ninguna temática, no la incluyas
+            en el diccionario que vas a mover. Recuerda su nombre para informar
+            de que queda pendiente.
 
-3. Si el resultado contiene la clave "error", comunica el error.
-   Si el diccionario está vacío, informa de que Recepción no contiene notas.
+            7. Cuando hayas terminado de clasificar todas las notas, llama UNA SOLA VEZ
+            a la herramienta MCP mover_archivos y pásale el diccionario completo
+            mediante el argumento clasificaciones.
 
-4. Lee y analiza el contenido de cada nota. Decide una única temática
-   para cada archivo, utilizando exclusivamente estas opciones:
-   cocina, lectura o deportes.
-   Clasifica por el contenido, nunca solamente por el nombre del archivo. 
+            8. No llames a mover_archivo: esa herramienta no forma parte del proceso.
+            La única herramienta para mover las notas clasificadas es mover_archivos.
 
-5. Mantén las correspondencias exactas entre cada nombre de archivo
-   y la temática que has decidido. Prepara un único diccionario con
-   esta estructura:
-   {{
-       "nota1.txt": "cocina",
-       "nota2.txt": "deportes",
-       "nota3.txt": "lectura"
-   }}
+            9. Examina el resultado devuelto por mover_archivos. Comunica qué archivos
+            se han movido y cuáles no. No afirmes que un archivo se movió si el
+            resultado indica un error.
 
-6. Si una nota no encaja razonablemente en ninguna temática, no la incluyas
-   en el diccionario que vas a mover. Recuerda su nombre para informar
-   de que queda pendiente.
+            10. Termina con un resumen de las clasificaciones, los movimientos y
+                las notas que hayan quedado pendientes.
 
-7. Cuando hayas terminado de clasificar todas las notas, llama UNA SOLA VEZ
-   a la herramienta MCP mover_archivos y pásale el diccionario completo
-   mediante el argumento clasificaciones.
-
-8. No llames a mover_archivo: esa herramienta no forma parte del proceso.
-   La única herramienta para mover las notas clasificadas es mover_archivos.
-
-9. Examina el resultado devuelto por mover_archivos. Comunica qué archivos
-   se han movido y cuáles no. No afirmes que un archivo se movió si el
-   resultado indica un error.
-
-10. Termina con un resumen de las clasificaciones, los movimientos y
-    las notas que hayan quedado pendientes.
-
-REGLAS IMPORTANTES:
-- No crees herramientas ni funciones propias.
-- Utiliza exclusivamente las herramientas proporcionadas por MCP.
-- Para clasificar y organizar, utiliza obtener_notas_recepcion y mover_archivos.
-- La llamada a mover_archivos debe contener todas las notas clasificadas,
-  no una llamada por archivo.
-- No inventes nombres, contenidos, temáticas ni resultados.
-- El objetivo es procesar todos los archivos de Recepción.
+            REGLAS IMPORTANTES:
+            - No crees herramientas ni funciones propias.
+            - Utiliza exclusivamente las herramientas proporcionadas por MCP.
+            - Para clasificar y organizar, utiliza obtener_notas_recepcion y mover_archivos.
+            - La llamada a mover_archivos debe contener todas las notas clasificadas,
+            no una llamada por archivo.
+            - No inventes nombres, contenidos, temáticas ni resultados.
+            - El objetivo es procesar todos los archivos de Recepción.
 """
 
-            # IMPORTANTE: el agente recibe exclusivamente herramientas MCP.
-            # No se añaden herramientas locales con @tool.
+          
             app = create_agent(
                 llm,
                 tools=mcp_tools,
@@ -208,37 +215,45 @@ REGLAS IMPORTANTES:
             while True:
                 pregunta = await ainput("Pregunta>>> ")
 
-                if pregunta.lower().strip() in ["salir", "exit", "quit"]:
+                if pregunta.lower() in ["salir", "exit", "quit"]:
                     print("Chat terminado")
                     break
 
                 print(f"--- Consulta: {pregunta} ---")
-
                 inputs = {"messages": [("user", pregunta)]}
-                estado_final = None
 
-                async for estado in app.astream(
-                    inputs,
-                    config=config,
-                    stream_mode="values"
-                ):
-                    estado_final = estado
-                    mensaje = estado["messages"][-1]
+                async for s in app.astream(inputs, config=config, stream_mode="values"):
 
-                    # Mostrar las llamadas a herramientas MCP.
-                    if getattr(mensaje, "tool_calls", None):
-                        for llamada in mensaje.tool_calls:
-                            print(f"\n[MCP: {llamada['name']}]")
-                            print(f"Argumentos enviados: {llamada['args']}")
 
-                if estado_final is not None:
-                    # Mostrar resultados de las herramientas de esta consulta.
-                    for mensaje in estado_final["messages"]:
-                        if getattr(mensaje, "type", None) == "tool":
-                            print(f"\n[RESULTADO MCP]: {mensaje.content}")
+                    ##prueba temporal 
+                    # print("\n--- HISTORIAL DE MENSAJES ---")
 
-                    mensaje_final = estado_final["messages"][-1]
-                    print(f"\nRESPUESTA FINAL:\n{mensaje_final.content}")
+                    # for msg in s["messages"]:
+                    #     print(f"\nTipo: {msg.type}")
+                    #     print(f"Contenido: {msg.content}")
+
+                    #     if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    #         print(f"Llamadas: {msg.tool_calls}")
+
+                    # print("--- FIN DEL HISTORIAL ---")
+
+
+
+
+                    message = s["messages"][-1]
+                    # if hasattr(message, "tool_calls") and message.tool_calls:
+                    #     print(f"   [MCP: Llamando a {message.tool_calls[0]['name']}...]")
+                    if hasattr(message, "tool_calls") and message.tool_calls:
+                        for llamada in message.tool_calls:
+                            print(f"   [MCP: Llamando a {llamada['name']}]")
+                            print(f"   Argumentos enviados: {llamada['args']}")
+                
+                for msg in s["messages"]:
+                    if msg.type == "tool":
+                        print(f"\n[RESULTADO MCP]: {msg.content}")
+
+                print(f"\nRESPUESTA FINAL:\n{message.content}")
+
 
 
 if __name__ == "__main__":
