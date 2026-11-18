@@ -2,16 +2,12 @@ from mcp.server.fastmcp import FastMCP
 import os
 import shutil
 
-# --------------------------------------------------
-# CONFIGURACIÓN
-# --------------------------------------------------
-
 HOST = "127.0.0.1"
 PORT = 8000
 
-NOTES_DIR = "/home/carolinamesamartine/notasPruebas/misnotas"
-RECEPCION_DIR = "/home/carolinamesamartine/notasPruebas/recepcion"
-DESCARGAS_DIR = "/home/carolinamesamartine/notasPruebas/descargas"
+NOTES_DIR = "/home/pabilion/notasPruebas/misnotas"
+RECEPCION_DIR = "/home/pabilion/notasPruebas/recepcion"
+DESCARGAS_DIR = "/home/pabilion/notasPruebas/descargas"
 
 TEMATICAS = ["cocina", "lectura", "deportes"]
 
@@ -20,7 +16,15 @@ os.makedirs(RECEPCION_DIR, exist_ok=True)
 os.makedirs(DESCARGAS_DIR, exist_ok=True)
 
 mcp = FastMCP("Gestor de Notas", host=HOST, port=PORT)
+# En el código anterior establecemos configuraciones el propio servidor mcp 
+    #Puerto y host donde va a lanzarse 
+    #Rutas de las carpetas principales y métodos ejecutados para crear estas si no existen cuando se ejecuta el servidor
+    #Temáticas a trabajar
 
+
+#Validamos nombres de las notas para que al clasificar varias notas de una carpeta entera no incluya las carpetas o añada un ".txt" a la ruta de los archivos 
+#Se crea esta función debido a que no estamos tratando con una nota individualmente en una sola petición como lo hacemos al crear o copiar nota 
+#Utilizamos esta función para tratar en el futuro varias notas en un bucle y limpiar la estructura de donde se utilice
 def validar_nombre_nota(nombre_nota: str) -> str:
     """Comprueba que el nombre sea un nombre de archivo y no una ruta."""
     if not nombre_nota or os.path.basename(nombre_nota) != nombre_nota:
@@ -31,6 +35,11 @@ def validar_nombre_nota(nombre_nota: str) -> str:
 
     return nombre_nota
 
+#Permite listar los nombres de los archivos según la temática 
+#En el docstring indicamos que funcionamiento tiene que tener esta función en específico y contexto sobre las ubicaciones las rutas
+    #nombre_tema será el parámetro obligatorio que necesitamos para realizar esta tool , el cual nos indicará la temática que quere listar el usuario
+    #Indicamos que antes de llamar a esta herramienta se necesita veroficar que el usuario nos ha proporcionado una temática
+    #Le comentamos que no puede inventar nombre de archivos que no estén en la propia temática
 @mcp.tool()
 def listar_notas_tematicas(nombre_tema: str) -> str:
     """
@@ -51,18 +60,22 @@ def listar_notas_tematicas(nombre_tema: str) -> str:
 
     dirpath = os.path.realpath(os.path.join(base, nombre_tema))
 
+    #Comprobaciones para controlar que quiera listar temáticas inexistentes o que dirpath esté bien construido
     if os.path.commonpath([base, dirpath]) != base:
             return "Error: Acceso denegado fuera del directorio de notas."
     
     if not os.path.isdir(dirpath):
             return f"Error: La carpeta de la temática no existe. Temáticas existentes {TEMATICAS}"
-    
+    # Devolvemos los nombre de los archivos separados por saltos de línea (\n) y si no hay archivos devolvemos un mensaje 
     try:
         files = sorted(os.listdir(dirpath))
         return "\n".join(files) if files else "No hay notas aún en esa temática."
     except Exception as e:
         return f"Error al listar notas: {str(e)}"
-    
+
+#Creamos una nota con el nombre y el contenido que nos ha proporcionado el usuario
+#En el docstring indicamos cuales son los parámetros adecuados que nos tiene que proporcionar y como debe interpretar el resultado
+    #Al poder intentar crear una nota existente o sin alguno de los parámetros obligatorios le mostramos que antes de llamar a esta herramienta tiene que comprobar que tenemos datos suficientes
 @mcp.tool()
 def crear_nota(nombre_nota: str,contenido_nota: str) -> str:
     """Crea una nota como un archivo .txt para guardarlo en la carpeta de recepción .
@@ -81,15 +94,12 @@ def crear_nota(nombre_nota: str,contenido_nota: str) -> str:
     """
     base = os.path.realpath(RECEPCION_DIR)
 
-#   # Añadir .txt solamente si no está presente
-#         if not nombre_nota.endswith(".txt"):
-#             nombre_nota += ".txt"
-
 
     if not os.path.isdir(base):
             return "Error: La carpeta no existe."
     
     try:
+        #crear ruta y comprobaciones de esta
         ruta_completa = os.path.join(base, f"{nombre_nota}.txt")
         
         if os.path.commonpath([base, ruta_completa]) != base:
@@ -98,14 +108,15 @@ def crear_nota(nombre_nota: str,contenido_nota: str) -> str:
         # Comprobar si el archivo ya existe
         if os.path.exists(ruta_completa):
             return "Error: Ya existe una nota con ese nombre."
-        
+        #Crear la nota con f.write en la ruta previamente establecida con el contenido indicado
         with open(ruta_completa, "w", encoding="utf-8") as f:
             f.write(contenido_nota)
 
         return "Nota Creada exitosamente en la carpeta Recepción."
     except Exception as e:
         return f"Error al crear la nota: {str(e)}"
-
+#Copiar/subir una nota de la carpeta de descargas a la de recepción
+#En el docstring indicamos que necsitamos el nombre de la nota para poder saber cual subimos
 @mcp.tool()
 def Copiar_nota(nombre_nota: str) -> str:
     """Copia un archivo indicado por el usuario de la carpeta local de descargas a la carpeta local de recepcion.
@@ -211,11 +222,6 @@ def listar_notas_recepcion() -> str:
         return f"Error al listar notas: {str(e)}"
 
 
-
-# --------------------------------------------------
-# HERRAMIENTAS MCP PARA CLASIFICAR Y ORGANIZAR
-# --------------------------------------------------
-
 @mcp.tool()
 def obtener_notas_recepcion() -> dict[str, str]:
     """
@@ -309,4 +315,6 @@ def mover_archivos(clasificaciones: dict[str, str]) -> dict:
 # --------------------------------------------------
 
 if __name__ == "__main__":
+    # Streamable HTTP: el endpoint queda en http://HOST:PORT/mcp
+    print(f"Servidor MCP escuchando en http://{HOST}:{PORT}/mcp")
     mcp.run(transport="streamable-http")

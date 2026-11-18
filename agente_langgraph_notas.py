@@ -9,14 +9,16 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_mcp_adapters.tools import load_mcp_tools
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
-
+#Variables de configuración del servidor mcp al que nos vamos a conectar y temáticas permitidas preestablecidas
 MCP_URL = "http://127.0.0.1:8000/mcp"
 TEMATICAS = ["cocina", "lectura", "deportes"]
-
+#Cargamos de antemano la api key de gemini que se necesiatará en el caso de indicar que el proveedor se llama "gemini"
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-
+#Creamos un método donde devolvemsos el modelo de lenguaje que va a utilizar el agente 
+#En este se recibe el proveedor y el nombre del modelo
+#De esta forma se puede cambiar de modelo sin tener que repetir código o modificar una estructura estática
 def obtener_llm(proveedor: str, modelo: str):
 
     if proveedor.lower() == "ollama":
@@ -45,19 +47,14 @@ async def ainput(prompt: str) -> str:
     # Permite que el loop de asyncio siga corriendo mientras el usuario escribe
     return await asyncio.to_thread(input, prompt)
 
-
-
+#En este ejericio solo vamos a crear un agente esto debido a que :
+    #1 . Todas las herramientas a trabajar tiene la misma temática que es trabajar con notas , no necesitamos que un nodo se especialize en una tarea en concreto 
+        #ya que el propio prompt puede interpretar la temática de los archivos debido al contenido y que se le indican las temáticas preestablecidas
+    #2 . No necesitan seguir un orden o un recorrido establecido , es decir , el usuario puede empezar la conversación quieriendo listar unas notas en vez de crear
+    #3 . Si creamos nodos dividiendo las responsabilidades , tendríamso que añadir una estructura adicional para dirigir peticiones a cada operación
+        #Mientrás que al tener un nodo y el servidor mcp disponemos de una estructura clara ya que uno de encarga de las operaciones y otro de interpretar al usuario
+    #4 . Trabajamos con un system_prompt desarrollado para que siga unos pasos y un orden en concreto
 async def main():
-
-    # Configurar el LLM
-    # llm = ChatOllama(
-    #     # model='llama3.1:8b-instruct-q4_K_M',
-    #     model='llama3.1:8b',
-    #     temperature=0,
-    #     base_url="http://localhost:11434"
-    #     # base_url="http://10.42.68.45:11434"
-    #     # base_url="http://127.0.0.1:11434",
-    # )
 
     #para ollama
     # llm = obtener_llm(
@@ -78,31 +75,19 @@ async def main():
 
             # Cargar TODAS las herramientas directamente desde MCP.
             mcp_tools = await load_mcp_tools(session)
-
-            # nombres_tools = {herramienta.name for herramienta in mcp_tools}
-
-            # print("Tools MCP disponibles:", ", ".join(sorted(nombres_tools)))
-
-            # # Comprobar que el servidor ofrece las herramientas necesarias.
-            # necesarias = {
-            #     "obtener_notas_recepcion",
-            #     "mover_archivos"
-            # }
-
-            # faltan = necesarias - nombres_tools
-
-            # if faltan:
-            #     raise RuntimeError(
-            #         "Faltan herramientas en el servidor MCP: "
-            #         + ", ".join(sorted(faltan))
-            #     )
+            print("Tools disponibles:", ", ".join(t.name for t in mcp_tools))
 
             memory = MemorySaver()
-
+            #Definimos el prompt del sistema que contiene los pasos a seguir durante cada acción pedida por el ususario
+            #Declaramos que tiene que preguntar si faltan parámetros necesarios , como interpretar los resultados si son correctos o no , cuando llamar a las funciones 
+            #FUNCIONES : 
+                #En el caso de que el usuario quiera clasificar la carpeta de recepción desarrollamos unos pasos específicos, 
+                #esto debido a que al decidir la temática de cada nota necesitamos pasar en un diccionario las diferentes notas y los futuros destinos al método moover_archivos
+                #En el resto de los casos indicamos parámetros necesarios , como llamar a las funciones y como interpertar el resultado
+                #Resumen de las funciones : listar por temática , crear nota , subir/copiar nota y clasificar notas
             system_prompt = f"""
    Eres un asistente que usa herramientas MCP para ayudar al usuario. Responde en español.
 
-            Tus funciones principales van a ser crear una nota , copiar una nota de la carpeta de descargas a la carpeta de recepción y leer el contenido de una nota específica.  
             Estos serán los pasos a seguir para cada función:
 
             Cuando el usuario quiera crear una nota:
@@ -130,19 +115,6 @@ async def main():
             - Interpreta el resultado de la herramienta antes de responder.
             - Si el resultado contiene el texto "Archivo copiado a la carpeta de recepción", considera que la copia ha sido correcta.
             - Si la herramienta devuelve un error , comunícaselo al usuario.
-
-            Cuando el usuario quiera leer una nota:
-             - Pregunta al usuario el nombre de la nota si no lo ha proporcionado.
-             - No inventes ni supongas un nombre de nota
-             - Cuando tengas el nombre de la nota, llama a la herramienta leer_nota con el parámetro nombre_nota que has obtenido anteriormente.
-             - Utiliza el resultado devuelto por la herramienta para comunicar al usuario el contenido de la nota.
-             - Si la herramienta devuelve un error , comunícaselo al usuario.
-            
-            Cuando el usuario quiera listar todas las notas de la carpeta de recepción:
-            - Llama a la herramienta listar_notas_recepcion.
-            - Utiliza el resultado devuelto por la herramienta para comunicar al ususario la lista de notas encontradas en esa carpeta.
-            - Si la herramienta devuelve un error , comunícaselo al usuario.
-
 
             CLASIFICAR Y MOVER TODAS LAS NOTAS DE RECEPCIÓN
 
@@ -181,14 +153,11 @@ async def main():
             a la herramienta MCP mover_archivos y pásale el diccionario completo
             mediante el argumento clasificaciones.
 
-            8. No llames a mover_archivo: esa herramienta no forma parte del proceso.
-            La única herramienta para mover las notas clasificadas es mover_archivos.
-
-            9. Examina el resultado devuelto por mover_archivos. Comunica qué archivos
+            8. Examina el resultado devuelto por mover_archivos. Comunica qué archivos
             se han movido y cuáles no. No afirmes que un archivo se movió si el
             resultado indica un error.
 
-            10. Termina con un resumen de las clasificaciones, los movimientos y
+            9. Termina con un resumen de las clasificaciones, los movimientos y
                 las notas que hayan quedado pendientes.
 
             REGLAS IMPORTANTES:
@@ -201,20 +170,22 @@ async def main():
             - El objetivo es procesar todos los archivos de Recepción.
 """
 
-          
+          #Creamos el agente con create_agent():
+            # le pasamos la configuración completa del llm , las tools del servidor previamente arrancado, el sistema encargado del estado de las conversaciones y el prompt creado con anterioridad
             app = create_agent(
                 llm,
                 tools=mcp_tools,
                 checkpointer=memory,
                 system_prompt=system_prompt
             )
-
+        #Definimos hilo de la conversación para checkpointer 
             config = {"configurable": {"thread_id": "mcp_user_1"}}
 
             # Bucle de conversación.
             while True:
+                #Recogemos en una variable la petición del usuario
                 pregunta = await ainput("Pregunta>>> ")
-
+                #Opción para finalizar la conversación
                 if pregunta.lower() in ["salir", "exit", "quit"]:
                     print("Chat terminado")
                     break
@@ -222,36 +193,24 @@ async def main():
                 print(f"--- Consulta: {pregunta} ---")
                 inputs = {"messages": [("user", pregunta)]}
 
+                # Ejecutamos el agente para trabajar de forma asíncrona
                 async for s in app.astream(inputs, config=config, stream_mode="values"):
-
-
-                    ##prueba temporal 
-                    # print("\n--- HISTORIAL DE MENSAJES ---")
-
-                    # for msg in s["messages"]:
-                    #     print(f"\nTipo: {msg.type}")
-                    #     print(f"Contenido: {msg.content}")
-
-                    #     if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    #         print(f"Llamadas: {msg.tool_calls}")
-
-                    # print("--- FIN DEL HISTORIAL ---")
-
-
 
 
                     message = s["messages"][-1]
                     # if hasattr(message, "tool_calls") and message.tool_calls:
                     #     print(f"   [MCP: Llamando a {message.tool_calls[0]['name']}...]")
+
+                    #Visualizamos por consola que herramientas está decidiendo ejecutar el agente y que parámetros está proporcionando al mcp
                     if hasattr(message, "tool_calls") and message.tool_calls:
                         for llamada in message.tool_calls:
                             print(f"   [MCP: Llamando a {llamada['name']}]")
                             print(f"   Argumentos enviados: {llamada['args']}")
-                
+                # Visualizamos resultado final de mcp , es decir , mostramos el mensaje de tipo tool
                 for msg in s["messages"]:
                     if msg.type == "tool":
                         print(f"\n[RESULTADO MCP]: {msg.content}")
-
+                # Respuesta final interpretada por el agente , el cual mostrará de la manera indicada según las indicaciones establecidas en el prompt del sistema
                 print(f"\nRESPUESTA FINAL:\n{message.content}")
 
 
