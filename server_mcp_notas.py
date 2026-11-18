@@ -22,19 +22,6 @@ mcp = FastMCP("Gestor de Notas", host=HOST, port=PORT)
     #Temáticas a trabajar
 
 
-#Validamos nombres de las notas para que al clasificar varias notas de una carpeta entera no incluya las carpetas o añada un ".txt" a la ruta de los archivos 
-#Se crea esta función debido a que no estamos tratando con una nota individualmente en una sola petición como lo hacemos al crear o copiar nota 
-#Utilizamos esta función para tratar en el futuro varias notas en un bucle y limpiar la estructura de donde se utilice
-def validar_nombre_nota(nombre_nota: str) -> str:
-    """Comprueba que el nombre sea un nombre de archivo y no una ruta."""
-    if not nombre_nota or os.path.basename(nombre_nota) != nombre_nota:
-        raise ValueError("Nombre de archivo no válido.")
-
-    if not nombre_nota.endswith(".txt"):
-        nombre_nota += ".txt"
-
-    return nombre_nota
-
 #Permite listar los nombres de los archivos según la temática 
 #En el docstring indicamos que funcionamiento tiene que tener esta función en específico y contexto sobre las ubicaciones las rutas
     #nombre_tema será el parámetro obligatorio que necesitamos para realizar esta tool , el cual nos indicará la temática que quere listar el usuario
@@ -264,7 +251,7 @@ if __name__ == "__main__":
     mcp.run(transport="streamable-http")
 
 #USO DE IA 
-#Consultar correcciones sobre comprobaciones necesarias para la tool mover_archivos como validar_nombre_nota
+#Consultar correcciones sobre comprobaciones necesarias para la tool mover_archivos
 #Buscar documentación sobre guardar errores de comprobaciones
 #Buscar documentación sobre el uso de shutil para mover los archivos
 #Buscar documentación sobre como mejorar el system_prompt para poder pasar sin errores el diccionario de clasificaciones
