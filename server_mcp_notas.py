@@ -174,8 +174,8 @@ def Copiar_nota(nombre_nota: str) -> str:
 @mcp.tool()
 def obtener_notas_recepcion() -> dict[str, str]:
     """
-    Devuelve todas las notas .txt de Recepción.
-    La clave es el nombre del archivo y el valor es su contenido.
+    Devuelve todas las notas de recepción en forma de diccionario.
+    La clave es el nombre de la nota y el valor es su contenido.
     """
     notas = {}
 
@@ -201,69 +201,69 @@ def obtener_notas_recepcion() -> dict[str, str]:
 
 #Una vez el agente haya clasificado todos los archivos en sus temáticas correspodientes , llama a esta tool para realizar el movimiento 
 #Mueve todos los archivos a sus carpetas destino 
+#En este apartado realizamos como resultado un filtro donde guardamos en dos diccionarios diferentes los archivos que se han movido y los que no 
+#Debido a que queremos mantener un seguimiento de cuales han tenido un progreso correcto
+#Si la temática no es válida , no existe el archivo en la carpeta, ya existe en la carpeta de destino o el nombre no es válido se procederá a guardar en no_correctos y seguir con el resto de comprobaciones e interacciones
+#Se guardará en no_correctos el nombre de la nota y su causa
 @mcp.tool()
 def mover_archivos(clasificaciones: dict[str, str]) -> dict:
     """
-    Recibe todas las clasificaciones en un único diccionario y mueve
-    cada nota de Recepción a su carpeta temática correspondiente.
-
+    Recibe un diccionario con todas las notas y sus destinos , mueve cada nota de recepción a su carpeta temática.
+     Parámetros:
+        - clasificaciones
     Ejemplo:
     {
-        "nota1.txt": "cocina",
-        "nota2.txt": "deportes"
+        "notaprueba1.txt": "cocina",
+        "notaprueba2.txt": "deportes",
+        "notaprueba3.txt": "lectura",
+        "notaprueba4.txt": "deportes"
     }
     """
-    movidos = {}
-    no_movidos = {}
+    correctos = {}
+    no_correctos = {}
     #recorremos todas los elementos nota:destino del diccionario clasificaciones
-    for nombre_nota, tema in clasificaciones.items():
-
+    for nombre, tema in clasificaciones.items():
         # Comprobamos que la temática analizada por el propio agente es una de las validas. Pasamos al siguiente archivo si no es el caso
         if tema not in TEMATICAS:
-            no_movidos[nombre_nota] = (
-                f"Temática no permitida: {tema}"
-            )
+            no_correctos[nombre] = (f"Temática no permitida: {tema}")
             continue
+        
+        if not nombre.endswith(".txt"):
+                nombre += ".txt"
 
-        # Comprobamos que el nombre del arhivo es válido, si no es el caso guardamos el error asociado
-        try:
-            nombre_nota = validar_nombre_nota(nombre_nota)
-        except ValueError as e:
-            no_movidos[str(nombre_nota)] = str(e)
-            continue
         # Construimos las diferentes rutas
-        origen = os.path.join(RECEPCION_DIR, nombre_nota)
+        origen = os.path.join(RECEPCION_DIR, nombre)
         carpeta_destino = os.path.join(NOTES_DIR, tema)
-        destino = os.path.join(carpeta_destino, nombre_nota)
+        destino = os.path.join(carpeta_destino, nombre)
 
         #Comprobamos que las notas que ha analizado el agente existen en la carpeta o ha pasado un nombre incorrecto
         if not os.path.isfile(origen):
-            no_movidos[nombre_nota] = (
-                "El archivo no existe en la carpeta de recepción."
-            )
+            no_correctos[nombre] = ("El archivo no existe en la carpeta de recepción.")
             continue
-
         try:
             os.makedirs(carpeta_destino, exist_ok=True)
             #Comprobamos si ya existe un archivo con ese nombre en la carpeta de destino
             if os.path.exists(destino):
-                no_movidos[nombre_nota] = (
-                    "Ya existe una nota con ese nombre en la temática."
-                )
+                no_correctos[nombre] = ("Nota ya existente en la carpeta de la temática.")
                 continue
             #Utilizamos shutil.move para mover los archivos de la carpeta de recepcion a la carpeta de destino y guardamos estos para luego que el agente interprete el resultado
             shutil.move(origen, destino)
-            movidos[nombre_nota] = tema
+            correctos[nombre] = tema
 
         except Exception as e:
-            no_movidos[nombre_nota] = str(e)
+            no_correctos[nombre] = str(e)
 
     return {
-        "archivos_movidos": movidos,
-        "archivos_no_movidos": no_movidos
+        "archivos_movidos": correctos,
+        "archivos_no_movidos": no_correctos
     }
 
 if __name__ == "__main__":
     # Streamable HTTP: el endpoint queda en http://HOST:PORT/mcp
     print(f"Servidor MCP escuchando en http://{HOST}:{PORT}/mcp")
     mcp.run(transport="streamable-http")
+
+#USO DE IA 
+#Consultar correcciones sobre comprobaciones necesarias para la tool mover_archivos como validar_nombre_nota
+#Buscar documentación sobre guardar errores de comprobaciones
+#Buscar documentación sobre el uso de shutil para mover los archivos
