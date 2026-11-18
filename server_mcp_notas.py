@@ -267,3 +267,4 @@ if __name__ == "__main__":
 #Consultar correcciones sobre comprobaciones necesarias para la tool mover_archivos como validar_nombre_nota
 #Buscar documentación sobre guardar errores de comprobaciones
 #Buscar documentación sobre el uso de shutil para mover los archivos
+#Buscar documentación sobre como mejorar el system_prompt para poder pasar sin errores el diccionario de clasificaciones

@@ -116,20 +116,17 @@ async def main():
             - Si el resultado contiene el texto "Archivo copiado a la carpeta de recepción", considera que la copia ha sido correcta.
             - Si la herramienta devuelve un error , comunícaselo al usuario.
 
-            CLASIFICAR Y MOVER TODAS LAS NOTAS DE RECEPCIÓN
+            Cuando el usuario solicite clasificar u organizar todas las notas de Recepción:
 
-            Cuando el usuario solicite clasificar u organizar todas las notas de Recepción,
-            sigue obligatoriamente este procedimiento:
-
-            1. Llama UNA SOLA VEZ a la herramienta MCP obtener_notas_recepcion.
+            1. Llama UNA SOLA VEZ a la herramienta obtener_notas_recepcion.
             Esta herramienta devuelve un diccionario cuyas claves son los nombres
-            de los archivos y cuyos valores son sus contenidos.
+            de las notas y cuyos valores son sus contenidos.
 
             2. No pidas al usuario los nombres de los archivos. Debes procesar todos
-            los archivos .txt que devuelve la herramienta.
+            los archivos que devuelve la herramienta.
 
             3. Si el resultado contiene la clave "error", comunica el error.
-            Si el diccionario está vacío, informa de que Recepción no contiene notas.
+            Si el diccionario está vacío, informa de que la carpeta de recepción no contiene notas.
 
             4. Lee y analiza el contenido de cada nota. Decide una única temática
             para cada archivo, utilizando exclusivamente estas opciones:
@@ -150,7 +147,7 @@ async def main():
             de que queda pendiente.
 
             7. Cuando hayas terminado de clasificar todas las notas, llama UNA SOLA VEZ
-            a la herramienta MCP mover_archivos y pásale el diccionario completo
+            a la herramienta mover_archivos y pásale el diccionario completo
             mediante el argumento clasificaciones.
 
             8. Examina el resultado devuelto por mover_archivos. Comunica qué archivos
@@ -160,7 +157,7 @@ async def main():
             9. Termina con un resumen de las clasificaciones, los movimientos y
                 las notas que hayan quedado pendientes.
 
-            REGLAS IMPORTANTES:
+            IMPORTANTE:
             - No crees herramientas ni funciones propias.
             - Utiliza exclusivamente las herramientas proporcionadas por MCP.
             - Para clasificar y organizar, utiliza obtener_notas_recepcion y mover_archivos.
