@@ -115,8 +115,10 @@ def crear_nota(nombre_nota: str,contenido_nota: str) -> str:
         return "Nota Creada exitosamente en la carpeta Recepción."
     except Exception as e:
         return f"Error al crear la nota: {str(e)}"
+    
 #Copiar/subir una nota de la carpeta de descargas a la de recepción
-#En el docstring indicamos que necsitamos el nombre de la nota para poder saber cual subimos
+#En el docstring indicamos que necesitamos el nombre de la nota para poder saber cual subimos
+#No se puede llamar a esta herramienta si no tenemos el nombre de la nota que queremos copiar
 @mcp.tool()
 def Copiar_nota(nombre_nota: str) -> str:
     """Copia un archivo indicado por el usuario de la carpeta local de descargas a la carpeta local de recepcion.
@@ -153,10 +155,10 @@ def Copiar_nota(nombre_nota: str) -> str:
     
     try:
         ruta_completa_destino = os.path.join(destino, f"{nombre_nota}")
-
+        #leemos la nota en su ruta de origen y guardamos el contenido en una variable 
         with open(archivo_origen, "r", encoding="utf-8") as f:
             contenido = f.read()
-        
+        #creamos la nueva nota
         with open(ruta_completa_destino, "w", encoding="utf-8") as f:
             f.write(contenido)
 
@@ -164,64 +166,11 @@ def Copiar_nota(nombre_nota: str) -> str:
     except Exception as e:
         return f"Error copiando el archivo: {str(e)}"
 
-    
-   
+#Estas dos últimas funcionalidades están creadas para depender una de la otra ya que el agente 
+# primero llamará a obtener_notas_recepción y le enviará a mover_archivos las respuestas del contenido analizado de la primera función
 
-@mcp.tool()
-def leer_nota(nombre_nota: str) -> str:
-    """."""
-    """
-    Lee el contenido de una nota específica en la carpeta de recepción
-    La nota se encuentra dentro de la carpeta recepcion dentro de misnotas y debe coincidir con el nombre del archivo.
-    
-    Parámetros:
-    - nombre_nota: nombre de la nota 
-
-    IMPORTANTE:
-    - Antes de llamar a esta herramienta, asegúrate de que el nombre ha sido proporcionada por el usuario.
-    - No inventes nombres de notas ni afirmes que la nota se ha leído si la herramienta no ha realizado la operación correctamente.
-    """
-    base = os.path.realpath(RECEPCION_DIR)
-
-    if not nombre_nota.endswith(".txt"):
-            nombre_nota += ".txt"
-
-    filepath = os.path.realpath(os.path.join(base, nombre_nota))
-
-    # Comprobar que el archivo está dentro de la carpeta de notas
-    if os.path.commonpath([base, filepath]) != base:
-        return "Error: Acceso denegado a archivos fuera del directorio de notas."
-
-    if not os.path.isfile(filepath):
-        return "Error: La nota no existe."
-
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        return f"Error leyendo el archivo: {str(e)}"
-
-@mcp.tool()
-def listar_notas_recepcion() -> str:
-    """
-    Lista todos los nombres de los archivos de notas que se encuentran SOLO dentro de la carpeta recepcion    
-
-    IMPORTANTE:
-    - Solo lista los nombres de los archivos en esa carpeta
-    - No inventes nombres de archivos ni afirmes que el listado de notas se ha obtenido si la herramienta no ha realizado la operación correctamente.
-    """
-    base = os.path.realpath(RECEPCION_DIR)
-    
-    if not os.path.isdir(base):
-            return f"Error: La carpeta recepción no existe."
-    
-    try:
-        files = sorted(os.listdir(base))
-        return "\n".join(files) if files else "No hay notas aún en esa carpeta."
-    except Exception as e:
-        return f"Error al listar notas: {str(e)}"
-
-
+#En esta función entregamos al agente los nombres y los contenidos de los archivos de la carpeta de recepción
+#Generando un diccionario con la siguiente estructura notas={nombre:contenido}
 @mcp.tool()
 def obtener_notas_recepcion() -> dict[str, str]:
     """
@@ -232,13 +181,15 @@ def obtener_notas_recepcion() -> dict[str, str]:
 
     if not os.path.isdir(RECEPCION_DIR):
         return {"error": "La carpeta de recepción no existe."}
-
+    #Recorremos todos los elementos que hya dentro de la carpeta recepción
     for nombre_nota in os.listdir(RECEPCION_DIR):
+        #construimos la ruta completa
         ruta = os.path.join(RECEPCION_DIR, nombre_nota)
 
         if not nombre_nota.endswith(".txt") or not os.path.isfile(ruta):
             continue
-
+        #Por cada valor de nombre_nota añadimos al diccionario un registro más 
+        #leemos el archivo y guardamos este como valor de su clave(nombre de su nota)
         try:
             with open(ruta, "r", encoding="utf-8") as archivo:
                 notas[nombre_nota] = archivo.read()
@@ -248,6 +199,8 @@ def obtener_notas_recepcion() -> dict[str, str]:
     return notas
 
 
+#Una vez el agente haya clasificado todos los archivos en sus temáticas correspodientes , llama a esta tool para realizar el movimiento 
+#Mueve todos los archivos a sus carpetas destino 
 @mcp.tool()
 def mover_archivos(clasificaciones: dict[str, str]) -> dict:
     """
@@ -262,27 +215,28 @@ def mover_archivos(clasificaciones: dict[str, str]) -> dict:
     """
     movidos = {}
     no_movidos = {}
-
+    #recorremos todas los elementos nota:destino del diccionario clasificaciones
     for nombre_nota, tema in clasificaciones.items():
 
-        # Validar temática.
+        # Comprobamos que la temática analizada por el propio agente es una de las validas. Pasamos al siguiente archivo si no es el caso
         if tema not in TEMATICAS:
             no_movidos[nombre_nota] = (
                 f"Temática no permitida: {tema}"
             )
             continue
 
-        # Validar nombre y existencia del archivo.
+        # Comprobamos que el nombre del arhivo es válido, si no es el caso guardamos el error asociado
         try:
             nombre_nota = validar_nombre_nota(nombre_nota)
         except ValueError as e:
             no_movidos[str(nombre_nota)] = str(e)
             continue
-
+        # Construimos las diferentes rutas
         origen = os.path.join(RECEPCION_DIR, nombre_nota)
         carpeta_destino = os.path.join(NOTES_DIR, tema)
         destino = os.path.join(carpeta_destino, nombre_nota)
 
+        #Comprobamos que las notas que ha analizado el agente existen en la carpeta o ha pasado un nombre incorrecto
         if not os.path.isfile(origen):
             no_movidos[nombre_nota] = (
                 "El archivo no existe en la carpeta de recepción."
@@ -291,13 +245,13 @@ def mover_archivos(clasificaciones: dict[str, str]) -> dict:
 
         try:
             os.makedirs(carpeta_destino, exist_ok=True)
-
+            #Comprobamos si ya existe un archivo con ese nombre en la carpeta de destino
             if os.path.exists(destino):
                 no_movidos[nombre_nota] = (
                     "Ya existe una nota con ese nombre en la temática."
                 )
                 continue
-
+            #Utilizamos shutil.move para mover los archivos de la carpeta de recepcion a la carpeta de destino y guardamos estos para luego que el agente interprete el resultado
             shutil.move(origen, destino)
             movidos[nombre_nota] = tema
 
@@ -308,11 +262,6 @@ def mover_archivos(clasificaciones: dict[str, str]) -> dict:
         "archivos_movidos": movidos,
         "archivos_no_movidos": no_movidos
     }
-
-
-# --------------------------------------------------
-# ARRANQUE DEL SERVIDOR
-# --------------------------------------------------
 
 if __name__ == "__main__":
     # Streamable HTTP: el endpoint queda en http://HOST:PORT/mcp
